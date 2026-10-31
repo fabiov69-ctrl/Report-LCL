@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ricerca Report LCL</title>
+  <style>
+    body { 
+      font-family: Arial, sans-serif; 
+      max-width: 850px; 
+      margin: 30px auto; 
+      padding: 0 15px; 
+      color: #333; 
+      background-color: #f8f9fa;
+    }
+    h2 {
+      color: #111;
+      border-bottom: 2px solid #007bff;
+      padding-bottom: 8px;
+    }
+    .search-box { 
+      display: flex; 
+      gap: 10px; 
+      margin-bottom: 25px; 
+    }
+    input[type="text"] { 
+      flex: 1; 
+      padding: 11px; 
+      font-size: 15px; 
+      border: 1px solid #ccc; 
+      border-radius: 4px; 
+      outline: none;
+    }
+    input[type="text"]:focus {
+      border-color: #007bff;
+    }
+    button { 
+      padding: 11px 20px; 
+      font-size: 15px; 
+      background: #007bff; 
+      color: white; 
+      border: none; 
+      border-radius: 4px; 
+      cursor: pointer; 
+      font-weight: bold; 
+    }
+    button:hover { 
+      background: #0056b3; 
+    }
+    .card { 
+      border: 1px solid #ddd; 
+      background: #ffffff; 
+      padding: 18px; 
+      margin-bottom: 20px; 
+      border-radius: 6px; 
+      box-shadow: 0 2px 4px rgba(0,0,0,0.06); 
+    }
+    .card h3 { 
+      margin-top: 0; 
+      margin-bottom: 12px; 
+      color: #007bff; 
+      border-bottom: 1px solid #eee; 
+      padding-bottom: 6px; 
+    }
+    .field-list { 
+      list-style: none; 
+      padding: 0; 
+      margin: 0 0 15px 0; 
+      display: grid; 
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); 
+      gap: 8px; 
+    }
+    .field-list li { 
+      background: #fdfdfd; 
+      padding: 8px 12px; 
+      border: 1px solid #e5e5e5; 
+      border-radius: 4px; 
+      font-size: 14px; 
+    }
+    .note-section { 
+      margin-top: 15px; 
+      border-top: 1px solid #eee;
+      padding-top: 10px;
+    }
+    textarea { 
+      width: 100%; 
+      box-sizing: border-box; 
+      height: 80px; 
+      margin-top: 6px; 
+      padding: 10px; 
+      border: 1px solid #ccc; 
+      border-radius: 4px; 
+      font-family: inherit; 
+      font-size: 14px; 
+      resize: vertical;
+    }
+    .btn-save { 
+      background: #28a745; 
+      margin-top: 8px; 
+    }
+    .btn-save:hover { 
+      background: #218838; 
+    }
+    .status-msg { 
+      font-size: 13px; 
+      font-weight: bold; 
+      margin-left: 10px; 
+    }
+    .status-success { 
+      color: #28a745; 
+    }
+    .status-error { 
+      color: #dc3545; 
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Ricerca Anagrafica - Report LCL</h2>
+  <div class="search-box">
+    <input type="text" id="searchInput" placeholder="Cerca per Nominativo o Eneltel..." onkeydown="if(event.key==='Enter') cerca()">
+    <button onclick="cerca()">Cerca</button>
+  </div>
+
+  <div id="results"></div>
+
+  <script>
+    const API_URL = "https://script.google.com/macros/s/AKfycbx5pG2UehcrczRGF25h8bhnlZcmHLf-XE3MD_fahfCfo8PugF5QWd2-Aw2W7Y5zCli9Uw/exec";
+
+    async function cerca() {
+      const q = document.getElementById("searchInput").value.trim();
+      const resultsDiv = document.getElementById("results");
+
+      if (!q) {
+        alert("Inserisci un Nominativo o un codice Eneltel da cercare.");
+        return;
+      }
+
+      resultsDiv.innerHTML = "<p><em>Ricerca in corso...</em></p>";
+
+      try {
+        const res = await fetch(`${API_URL}?q=${encodeURIComponent(q)}`);
+        const json = await res.json();
+
+        if (json.status !== "success") {
+          resultsDiv.innerHTML = `<p class="status-error">Errore: ${json.message}</p>`;
+          return;
+        }
+
+        if (!json.results || json.results.length === 0) {
+          resultsDiv.innerHTML = "<p>Nessun record trovato corrispondente al criterio di ricerca.</p>";
+          return;
+        }
+
+        resultsDiv.innerHTML = "";
+        json.results.forEach(item => {
+          const card = document.createElement("div");
+          card.className = "card";
+
+          // Nominativo (Colonna A / Indice 0)
+          const nominativo = item.data[0] || "Nominativo non specificato";
+
+          let html = `<h3>${nominativo}</h3><ul class="field-list">`;
+          
+          item.headers.forEach((header, idx) => {
+            const val = item.data[idx] !== undefined ? item.data[idx] : "";
+            html += `<li><strong>${header || 'Colonna ' + (idx + 1)}:</strong> ${val}</li>`;
+          });
+          html += `</ul>`;
+
+          // Note (Colonna H / Indice 7)
+          const notaAttuale = item.data[7] || "";
+
+          html += `
+            <div class="note-section">
+              <label for="nota-${item.rowIndex}"><strong>Note (Colonna H):</strong></label>
+              <textarea id="nota-${item.rowIndex}" placeholder="Inserisci una nota...">${notaAttuale}</textarea>
+              <br>
+              <button class="btn-save" onclick="salvaNota(${item.rowIndex})">Salva Nota</button>
+              <span id="msg-${item.rowIndex}" class="status-msg"></span>
+            </div>
+          `;
+
+          card.innerHTML = html;
+          resultsDiv.appendChild(card);
+        });
+
+      } catch (err) {
+        resultsDiv.innerHTML = `<p class="status-error">Errore durante la ricerca: ${err.message}</p>`;
+      }
+    }
+
+    async function salvaNota(rowIndex) {
+      const nota = document.getElementById(`nota-${rowIndex}`).value;
+      const statusSpan = document.getElementById(`msg-${rowIndex}`);
+      statusSpan.className = "status-msg";
+      statusSpan.textContent = "Salvataggio in corso...";
+
+      try {
+        const res = await fetch(API_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "text/plain;charset=utf-8"
+          },
+          body: JSON.stringify({ rowIndex: rowIndex, nota: nota })
+        });
+        
+        const json = await res.json();
+
+        if (json.status === "success") {
+          statusSpan.className = "status-msg status-success";
+          statusSpan.textContent = "Nota salvata con successo!";
+          setTimeout(() => { statusSpan.textContent = ""; }, 3000);
+        } else {
+          statusSpan.className = "status-msg status-error";
+          statusSpan.textContent = "Errore: " + json.message;
+        }
+      } catch (err) {
+        statusSpan.className = "status-msg status-error";
+        statusSpan.textContent = "Errore di connessione.";
+      }
+    }
+  </script>
+</body>
+</html>
