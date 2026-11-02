@@ -7,7 +7,7 @@
   <style>
     body { 
       font-family: Arial, sans-serif; 
-      max-width: 900px; 
+      max-width: 950px; 
       margin: 30px auto; 
       padding: 0 15px; 
       color: #333; 
@@ -48,6 +48,11 @@
       margin-bottom: 20px; 
       border-radius: 6px; 
       box-shadow: 0 2px 4px rgba(0,0,0,0.06); 
+      transition: background-color 0.3s;
+    }
+    .card.sostituito {
+      background-color: #eafaf1;
+      border-color: #b7e4c7;
     }
     .card h3 { 
       margin-top: 0; 
@@ -71,15 +76,42 @@
       border-radius: 4px; 
       font-size: 14px; 
     }
+    .highlight-col {
+      background: #eef6ff !important;
+      border-color: #b9d7fb !important;
+    }
     .note-section { 
       margin-top: 15px; 
       border-top: 1px solid #eee;
       padding-top: 10px;
     }
+    .checkbox-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      margin-bottom: 10px;
+      background: #f1f3f5;
+      padding: 10px 12px;
+      border-radius: 5px;
+      align-items: center;
+    }
+    .checkbox-group label {
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 600;
+    }
+    .checkbox-group input[type="checkbox"] {
+      width: 17px;
+      height: 17px;
+      cursor: pointer;
+    }
     textarea { 
       width: 100%; 
       box-sizing: border-box; 
-      height: 70px; 
+      height: 75px; 
       margin-top: 6px; 
       padding: 10px; 
       border: 1px solid #ccc; 
@@ -111,7 +143,7 @@
   <div class="box-container">
     <h3>2. Confronta da File (Mostra solo con Note)</h3>
     <p style="font-size: 13px; color: #666; margin-top: 0;">
-      Carica un file di testo (<code>.txt</code> o <code>.csv</code>) con un elenco di nomi o Eneltel (uno per riga). Verranno mostrati solo i record che corrispondono alla lista e che hanno già delle note inserite.
+      Carica un file di testo (<code>.txt</code> o <code>.csv</code>) con un elenco di nomi o Eneltel (uno per riga). Verranno mostrati solo i record corrispondenti che hanno già note nel database.
     </p>
     <div class="bulk-section">
       <input type="file" id="fileInput" accept=".txt,.csv">
@@ -123,6 +155,15 @@
 
   <script>
     const API_URL = "https://script.google.com/macros/s/AKfycbx5pG2UehcrczRGF25h8bhnlZcmHLf-XE3MD_fahfCfo8PugF5QWd2-Aw2W7Y5zCli9Uw/exec";
+
+    // Funzione di formattazione data in gg/mm/aa
+    function getDataFormattata() {
+      const d = new Date();
+      const gg = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const aa = String(d.getFullYear()).slice(-2);
+      return `${gg}/${mm}/${aa}`;
+    }
 
     // 1. Ricerca Singola
     async function cerca() {
@@ -152,7 +193,7 @@
       }
     }
 
-    // 2. Lettura e Confronto da File
+    // 2. Confronto da File
     function analizzaFile() {
       const fileInput = document.getElementById("fileInput");
       const resultsDiv = document.getElementById("results");
@@ -167,7 +208,6 @@
 
       reader.onload = async function(e) {
         const text = e.target.result;
-        // Divide per righe e rimuove spazi vuoti
         const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
 
         if (lines.length === 0) {
@@ -200,7 +240,7 @@
       reader.readAsText(file);
     }
 
-    // Funzione comune per mostrare i record a video
+    // Renderizza i risultati a video
     function renderResults(records, emptyMessage) {
       const resultsDiv = document.getElementById("results");
       if (!records || records.length === 0) {
@@ -211,20 +251,46 @@
       resultsDiv.innerHTML = `<p><strong>Record trovati: ${records.length}</strong></p>`;
       records.forEach(item => {
         const card = document.createElement("div");
-        card.className = "card";
+        const notaAttuale = String(item.data[7] || "");
+        
+        card.id = `card-${item.rowIndex}`;
+        card.className = "card" + (/sostituito/i.test(notaAttuale) ? " sostituito" : "");
 
         const nominativo = item.data[0] || "Nominativo non specificato";
         let html = `<h3>${nominativo}</h3><ul class="field-list">`;
         
+        // Visualizza tutti i campi disponibili (incluse le colonne I e J, indici 8 e 9)
         item.headers.forEach((header, idx) => {
           const val = item.data[idx] !== undefined ? item.data[idx] : "";
-          html += `<li><strong>${header || 'Colonna ' + (idx + 1)}:</strong> ${val}</li>`;
+          const isColIJ = (idx === 8 || idx === 9);
+          const colClass = isColIJ ? 'class="highlight-col"' : '';
+          html += `<li ${colClass}><strong>${header || 'Colonna ' + String.fromCharCode(65 + idx)}:</strong> ${val}</li>`;
         });
         html += `</ul>`;
 
-        const notaAttuale = item.data[7] || "";
+        // Presenza dei flag nelle note per impostare lo stato iniziale dei checkbox
+        const hasSost = /sostituito/i.test(notaAttuale);
+        const hasAv = /accesso a vuoto/i.test(notaAttuale);
+        const hasAvviso = /avviso/i.test(notaAttuale);
+
         html += `
           <div class="note-section">
+            <div class="checkbox-group">
+              <span><strong>Azioni rapide:</strong></span>
+              <label>
+                <input type="checkbox" id="chk-sost-${item.rowIndex}" ${hasSost ? 'checked' : ''} onchange="applicaFlag(${item.rowIndex}, 'Sostituito')">
+                1. Sostituito
+              </label>
+              <label>
+                <input type="checkbox" id="chk-av-${item.rowIndex}" ${hasAv ? 'checked' : ''} onchange="applicaFlag(${item.rowIndex}, 'Accesso a Vuoto')">
+                2. A.V. (Accesso a Vuoto)
+              </label>
+              <label>
+                <input type="checkbox" id="chk-avviso-${item.rowIndex}" ${hasAvviso ? 'checked' : ''} onchange="applicaFlag(${item.rowIndex}, 'avviso')">
+                3. Avviso
+              </label>
+            </div>
+
             <label for="nota-${item.rowIndex}"><strong>Note (Colonna H):</strong></label>
             <textarea id="nota-${item.rowIndex}" placeholder="Inserisci una nota...">${notaAttuale}</textarea>
             <br>
@@ -238,9 +304,49 @@
       });
     }
 
-    // Salvataggio della nota
+    // Gestione dei checkbox: inserisce la voce con data o incrementa/aggiorna solo la data
+    function applicaFlag(rowIndex, tipo) {
+      const textarea = document.getElementById(`nota-${rowIndex}`);
+      const card = document.getElementById(`card-${rowIndex}`);
+      let testo = textarea.value.trim();
+      const dataOggi = getDataFormattata();
+
+      let regex;
+      let testoAggiunto = "";
+
+      if (tipo === "Sostituito") {
+        regex = /Sostituito(\s+\d{2}\/\d{2}\/\d{2})?/gi;
+        testoAggiunto = `Sostituito ${dataOggi}`;
+      } else if (tipo === "Accesso a Vuoto") {
+        regex = /Accesso a Vuoto(\s+\d{2}\/\d{2}\/\d{2})?/gi;
+        testoAggiunto = `Accesso a Vuoto ${dataOggi}`;
+      } else if (tipo === "avviso") {
+        regex = /avviso(\s+\d{2}\/\d{2}\/\d{2})?/gi;
+        testoAggiunto = `avviso ${dataOggi}`;
+      }
+
+      if (regex.test(testo)) {
+        // Se già presente, sostituisce la voce aggiornando unicamente la data
+        testo = testo.replace(regex, testoAggiunto);
+      } else {
+        // Altrimenti la aggiunge in coda
+        testo = testo ? `${testo} - ${testoAggiunto}` : testoAggiunto;
+      }
+
+      textarea.value = testo;
+
+      // Aggiorna lo stile della card se è presente "sostituito"
+      if (/sostituito/i.test(testo)) {
+        card.classList.add("sostituito");
+      } else {
+        card.classList.remove("sostituito");
+      }
+    }
+
+    // Salvataggio della nota sul foglio Google
     async function salvaNota(rowIndex) {
       const nota = document.getElementById(`nota-${rowIndex}`).value;
+      const card = document.getElementById(`card-${rowIndex}`);
       const statusSpan = document.getElementById(`msg-${rowIndex}`);
       statusSpan.className = "status-msg";
       statusSpan.textContent = "Salvataggio in corso...";
@@ -256,7 +362,14 @@
 
         if (json.status === "success") {
           statusSpan.className = "status-msg status-success";
-          statusSpan.textContent = "Nota salvata e riga evidenziata!";
+          statusSpan.textContent = "Nota salvata ed evidenziata!";
+          
+          if (/sostituito/i.test(nota)) {
+            card.classList.add("sostituito");
+          } else {
+            card.classList.remove("sostituito");
+          }
+
           setTimeout(() => { statusSpan.textContent = ""; }, 3000);
         } else {
           statusSpan.className = "status-msg status-error";
