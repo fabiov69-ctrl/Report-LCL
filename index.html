@@ -124,8 +124,18 @@
     .status-msg { font-size: 13px; font-weight: bold; margin-left: 10px; }
     .status-success { color: #28a745; }
     .status-error { color: #dc3545; }
-    .bulk-section { margin-top: 15px; display: flex; align-items: center; gap: 15px; }
+    .bulk-section { 
+      margin-top: 15px; 
+      display: flex; 
+      flex-wrap: wrap; 
+      align-items: center; 
+      gap: 10px; 
+    }
     input[type="file"] { font-size: 14px; }
+    .btn-secondary { background-color: #6f42c1; }
+    .btn-secondary:hover { background-color: #59339d; }
+    .btn-all { background-color: #17a2b8; }
+    .btn-all:hover { background-color: #138496; }
   </style>
 </head>
 <body>
@@ -141,13 +151,14 @@
   </div>
 
   <div class="box-container">
-    <h3>2. Confronta da File (Mostra solo con Note)</h3>
+    <h3>2. Confronta da File</h3>
     <p style="font-size: 13px; color: #666; margin-top: 0;">
-      Carica un file di testo (<code>.txt</code> o <code>.csv</code>) con un elenco di nomi o Eneltel (uno per riga). Verranno mostrati solo i record corrispondenti che hanno già note nel database.
+      Carica un file di testo (<code>.txt</code> o <code>.csv</code>) con un elenco di nomi o Eneltel (uno per riga). Scegli se visualizzare tutti i record corrispondenti o solo quelli che hanno già note salvate.
     </p>
     <div class="bulk-section">
       <input type="file" id="fileInput" accept=".txt,.csv">
-      <button onclick="analizzaFile()" style="background-color: #6f42c1;">Confronta File</button>
+      <button class="btn-all" onclick="analizzaFile(false)">Mostra Tutti (Con e Senza Note)</button>
+      <button class="btn-secondary" onclick="analizzaFile(true)">Solo con Note</button>
     </div>
   </div>
 
@@ -156,7 +167,6 @@
   <script>
     const API_URL = "https://script.google.com/macros/s/AKfycbx5pG2UehcrczRGF25h8bhnlZcmHLf-XE3MD_fahfCfo8PugF5QWd2-Aw2W7Y5zCli9Uw/exec";
 
-    // Funzione di formattazione data in gg/mm/aa
     function getDataFormattata() {
       const d = new Date();
       const gg = String(d.getDate()).padStart(2, '0');
@@ -193,8 +203,8 @@
       }
     }
 
-    // 2. Confronto da File
-    function analizzaFile() {
+    // 2. Elaborazione File (Parametro: onlyWithNotes = true/false)
+    function analizzaFile(onlyWithNotes = false) {
       const fileInput = document.getElementById("fileInput");
       const resultsDiv = document.getElementById("results");
 
@@ -215,13 +225,20 @@
           return;
         }
 
-        resultsDiv.innerHTML = `<p><em>Confronto in corso per ${lines.length} elementi...</em></p>`;
+        const msgAttesa = onlyWithNotes 
+          ? `Ricerca record con note per ${lines.length} elementi...` 
+          : `Ricerca di tutti i record per ${lines.length} elementi...`;
+        resultsDiv.innerHTML = `<p><em>${msgAttesa}</em></p>`;
 
         try {
           const res = await fetch(API_URL, {
             method: "POST",
             headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify({ action: "bulk_check", list: lines })
+            body: JSON.stringify({ 
+              action: "bulk_check", 
+              list: lines,
+              onlyWithNotes: onlyWithNotes 
+            })
           });
           const json = await res.json();
 
@@ -230,7 +247,11 @@
             return;
           }
 
-          renderResults(json.results, "Nessun record presente nel file ha note già inserite nel database.");
+          const emptyMsg = onlyWithNotes
+            ? "Nessun record presente nel file ha note già inserite nel database."
+            : "Nessun record trovato per gli elementi presenti nel file.";
+
+          renderResults(json.results, emptyMsg);
 
         } catch (err) {
           resultsDiv.innerHTML = `<p class="status-error">Errore durante il confronto: ${err.message}</p>`;
@@ -259,7 +280,6 @@
         const nominativo = item.data[0] || "Nominativo non specificato";
         let html = `<h3>${nominativo}</h3><ul class="field-list">`;
         
-        // Visualizza tutti i campi disponibili (incluse le colonne I e J, indici 8 e 9)
         item.headers.forEach((header, idx) => {
           const val = item.data[idx] !== undefined ? item.data[idx] : "";
           const isColIJ = (idx === 8 || idx === 9);
@@ -268,7 +288,6 @@
         });
         html += `</ul>`;
 
-        // Presenza dei flag nelle note per impostare lo stato iniziale dei checkbox
         const hasSost = /sostituito/i.test(notaAttuale);
         const hasAv = /accesso a vuoto/i.test(notaAttuale);
         const hasAvviso = /avviso/i.test(notaAttuale);
@@ -304,7 +323,6 @@
       });
     }
 
-    // Gestione dei checkbox: inserisce la voce con data o incrementa/aggiorna solo la data
     function applicaFlag(rowIndex, tipo) {
       const textarea = document.getElementById(`nota-${rowIndex}`);
       const card = document.getElementById(`card-${rowIndex}`);
@@ -326,16 +344,13 @@
       }
 
       if (regex.test(testo)) {
-        // Se già presente, sostituisce la voce aggiornando unicamente la data
         testo = testo.replace(regex, testoAggiunto);
       } else {
-        // Altrimenti la aggiunge in coda
         testo = testo ? `${testo} - ${testoAggiunto}` : testoAggiunto;
       }
 
       textarea.value = testo;
 
-      // Aggiorna lo stile della card se è presente "sostituito"
       if (/sostituito/i.test(testo)) {
         card.classList.add("sostituito");
       } else {
@@ -343,7 +358,6 @@
       }
     }
 
-    // Salvataggio della nota sul foglio Google
     async function salvaNota(rowIndex) {
       const nota = document.getElementById(`nota-${rowIndex}`).value;
       const card = document.getElementById(`card-${rowIndex}`);
